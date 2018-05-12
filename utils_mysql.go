@@ -9,9 +9,7 @@ import (
 	"strings"
 )
 
-// GetColumnsFromMysqlTable Select column details from information schema and return map of map
-func GetColumnsFromMysqlTable(mariadbUser string, mariadbPassword string, mariadbHost string, mariadbPort int, mariadbDatabase string, mariadbTable string) (*map[string]map[string]string, error) {
-
+func conn(mariadbUser string, mariadbPassword string, mariadbHost string, mariadbPort int, mariadbDatabase string) (*sql.DB, error) {
 	var err error
 	var db *sql.DB
 	if mariadbPassword != "" {
@@ -19,6 +17,48 @@ func GetColumnsFromMysqlTable(mariadbUser string, mariadbPassword string, mariad
 	} else {
 		db, err = sql.Open("mysql", mariadbUser+"@tcp("+mariadbHost+":"+strconv.Itoa(mariadbPort)+")/"+mariadbDatabase+"?&parseTime=True")
 	}
+	return db, err
+}
+
+func GetTables(mariadbUser string, mariadbPassword string, mariadbHost string, mariadbPort int, mariadbDatabase string) ([]string, error) {
+	db, err := conn(mariadbUser, mariadbPassword, mariadbHost, mariadbPort, mariadbDatabase)
+	defer db.Close()
+
+	// Check for error in db, note this does not check connectivity but does check uri
+	if err != nil {
+		fmt.Println("Error opening mysql db: " + err.Error())
+		return nil, err
+	}
+
+	columnDataTypeQuery := "SELECT DISTINCT TABLE_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ?"
+	if Debug {
+		fmt.Println("running: " + columnDataTypeQuery)
+	}
+
+	rows, err := db.Query(columnDataTypeQuery, mariadbDatabase)
+
+	if err != nil {
+		fmt.Println("Error selecting from db: " + err.Error())
+		return nil, err
+	}
+	if rows != nil {
+		defer rows.Close()
+	} else {
+		return nil, errors.New("No results returned for table")
+	}
+
+	var tables []string
+	for rows.Next() {
+		var tableName string
+		rows.Scan(&tableName)
+		tables = append(tables, tableName)
+	}
+	return tables, nil
+}
+
+// GetColumnsFromMysqlTable Select column details from information schema and return map of map
+func GetColumnsFromMysqlTable(mariadbUser string, mariadbPassword string, mariadbHost string, mariadbPort int, mariadbDatabase string, mariadbTable string) (*map[string]map[string]string, error) {
+	db, err := conn(mariadbUser, mariadbPassword, mariadbHost, mariadbPort, mariadbDatabase)
 	defer db.Close()
 
 	// Check for error in db, note this does not check connectivity but does check uri
